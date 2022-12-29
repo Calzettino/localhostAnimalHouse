@@ -2,7 +2,7 @@ const express = require('express')
 const router = express.Router()
 const Service = require("../models/mService")
 
-//get all
+//Get all
 router.get('/', async(req, res)=> {
     try{
         const services = await Service.find()
@@ -10,22 +10,75 @@ router.get('/', async(req, res)=> {
     } catch(err) {
         res.status(500).json({message: err.message})
     }
-
-
 })
-//get one
-router.get('/:id', getService, (req, res)=> {
+
+//Get service filtered by mode
+router.get("/mode/:mode", async (request , response) => {
+    const mode = request.params.mode
+    const services = await Service.find({mode: mode});
+
+    try {
+        response.send(services);
+    } catch (error) {
+        response.status(500).send(error);
+    }
+});
+
+//Get one
+router.get('/id/:id', getService, (req, res)=> {
     res.json(res.service)
 })
-//create one
+
+//get one by name
+router.get('/name/:name', async(req, res) => {
+    const name = req.params.name
+    let service
+    try {
+        service = await Service.find({ name: name });
+        if (service == null) {
+            return res.status(404).json({ message: 'Cannot find service' })
+        } else {
+            res.status(201).json(service)
+        }
+    } catch (err) {
+        return res.status(500).json({ message: err.message })
+    }
+})
+
+
+//get one by location
+router.get('/location/:location?', async(req, res) => {
+    const location = req.params.location
+    let service
+    try {
+        service = await Service.aggregate([{ $match: { location: location } }, { $sample: { size: 3 }} ])
+
+        if(service.length<3){
+            const moreService = await Service.aggregate([{ $match: { location: {$not:{$eq:location}} } }, { $sample: { size: 3-service.length }}])
+            service.push(moreService)
+        }
+        if (service == null) {
+            return res.status(404).json({ message: 'Cannot find service' })
+        } else {
+            res.status(201).json(service)
+        }
+    } catch (err) {
+        return res.status(500).json({ message: err.message })
+    }
+})
+//Create one
 router.post('/', async (req, res)=> {
     const service = new Service({
+        mode: req.body.mode,
         name: req.body.name,
         img: req.body.img,
         location: req.body.location,
         category: req.body.category,
         price: req.body.price,
-        description: req.body.description
+        description: req.body.description,
+        allday: req.body.allday,
+        time: req.body.time,
+        vip: req.body.vip,
     })
     try{
         const newService = await service.save()
@@ -34,9 +87,13 @@ router.post('/', async (req, res)=> {
         res.status(400).json({message: err.message})
     }
 })
-//update one
+
+//Update one
 router.patch('/:id', getService, async (req, res)=> {
 
+    if(req.body.mode != null){
+        res.service.mode=req.body.mode
+    }
     if(req.body.name != null){
         res.service.name=req.body.name
     }
@@ -55,6 +112,16 @@ router.patch('/:id', getService, async (req, res)=> {
     if(req.body.description != null){
         res.service.description=req.body.description
     }
+    if(req.body.allday != null){
+        res.service.allday=req.body.allday
+    }
+    if(req.body.time != null){
+        res.service.time=req.body.time
+    }
+    if(req.body.vip != null){
+        res.service.vip=req.body.vip
+    }
+
     try{
         const updateService = await res.service.save()
         res.json(updateService)
@@ -63,7 +130,8 @@ router.patch('/:id', getService, async (req, res)=> {
     }
 
 })
-//delete one
+
+//Delete one
 router.delete('/:id', getService, async (req, res)=> {
     try{
         await res.service.remove()
